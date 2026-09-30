@@ -58,6 +58,8 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
   const [refundItemId, setRefundItemId] = useState<string | null>(null);
   const [refundReason, setRefundReason] = useState('');
   const [showRefundPrompt, setShowRefundPrompt] = useState(false);
+  const [refundAmount, setRefundAmount] = useState<number>(0);
+  const [refundMode, setRefundMode] = useState<'item' | 'full' | 'partial'>('item');
 
   // Table transfer state
   const [selectedNewTableId, setSelectedNewTableId] = useState('');
@@ -95,7 +97,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
 
     if (order.paymentStatus === 'paid') {
       if (!managerPin || !verifyManagerPin(managerPin)) {
-        setPinError('Cancelling a PAID order requires valid Manager PIN (9999).');
+        setPinError('Cancelling a PAID order requires a valid Manager PIN.');
         return;
       }
     }
@@ -108,33 +110,75 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
     }
   };
 
+  const openItemRefund = (itemId: string, amount: number) => {
+    setRefundMode('item');
+    setRefundItemId(itemId);
+    setRefundAmount(amount);
+    setRefundReason('');
+    setManagerPin('');
+    setPinError('');
+    setShowRefundPrompt(true);
+  };
+
+  const openOrderRefund = (mode: 'full' | 'partial') => {
+    setRefundMode(mode);
+    setRefundItemId(null);
+    setRefundAmount(mode === 'full' ? order.grandTotal : 0);
+    setRefundReason('');
+    setManagerPin('');
+    setPinError('');
+    setShowRefundPrompt(true);
+  };
+
   const handleConfirmRefund = () => {
     setPinError('');
+
     if (!refundReason.trim()) {
       alert('Please specify a refund reason.');
       return;
     }
+
     if (!managerPin || !verifyManagerPin(managerPin)) {
-      setPinError('Refund requires valid Manager PIN (9999).');
+      setPinError('Refund requires a valid Manager PIN.');
       return;
     }
 
     const itemToRefund = order.items.find(it => it.id === refundItemId);
-    const amountToRefund = itemToRefund ? itemToRefund.totalPrice : order.grandTotal;
+    const amountToRefund =
+      refundMode === 'item' && itemToRefund
+        ? itemToRefund.totalPrice
+        : refundMode === 'full'
+        ? order.grandTotal
+        : refundAmount;
+
+    if (!amountToRefund || amountToRefund <= 0) {
+      setPinError('Please enter a valid refund amount.');
+      return;
+    }
+
+    const alreadyRefunded = order.refunds.reduce((sum, refund) => sum + refund.amount, 0);
+    const remainingRefundable = Math.max(0, order.grandTotal - alreadyRefunded);
+
+    if (amountToRefund > remainingRefundable) {
+      setPinError(`Maximum refundable amount is ${branch.currency} ${remainingRefundable}.`);
+      return;
+    }
 
     const res = refundOrder(
       order.id,
       amountToRefund,
       refundReason,
       managerPin,
-      refundItemId || undefined
+      refundMode === 'item' ? refundItemId || undefined : undefined
     );
 
     if (res.success) {
       setShowRefundPrompt(false);
       setRefundItemId(null);
       setRefundReason('');
+      setRefundAmount(0);
       setManagerPin('');
+      setPinError('');
     } else {
       setPinError(res.error || 'Refund failed.');
     }
@@ -264,10 +308,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                         <td className="p-3 text-center">
                           {!item.voided && order.paymentStatus === 'paid' && (
                             <button
-                              onClick={() => {
-                                setRefundItemId(item.id);
-                                setShowRefundPrompt(true);
-                              }}
+                              onClick={() => openItemRefund(item.id, item.totalPrice)}
                               className="px-2 py-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[10px] font-semibold transition"
                             >
                               Void / Refund
@@ -498,15 +539,52 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                 </div>
               </div>
 
+              {/* Full / Partial Order Refund */}
+              {order.paymentStatus !== 'unpaid' &&
+                order.paymentStatus !== 'refunded' &&
+                order.status !== 'cancelled' && (
+                  <div className="p-4 rounded-xl bg-amber-950/20 border border-amber-500/30 space-y-2">
+                    <div className="font-bold text-amber-400 flex items-center gap-2">
+                      <ShieldAlert className="w-4 h-4" />
+                      Refund Payment
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Issue a full or partial refund. Manager authorization and a reason are required.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => openOrderRefund('full')}
+                        className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs transition"
+                      >
+                        Full Refund
+                      </button>
+                      <button
+                        onClick={() => openOrderRefund('partial')}
+                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition"
+                      >
+                        Partial Refund
+                      </button>
+                    </div>
+                  </div>
+                )}
+
               {/* Order Cancellation */}
               <div className="p-4 rounded-xl bg-rose-950/20 border border-rose-500/30 space-y-2">
                 <div className="font-bold text-rose-400 flex items-center gap-2">
                   <Ban className="w-4 h-4" />
                   Cancel Order
                 </div>
-                {!showCancelPrompt ? (
+                {order.status === 'cancelled' ? (
+                  <div className="text-[11px] font-bold text-rose-300">This order is already cancelled.</div>
+                ) : order.paymentStatus === 'refunded' ? (
+                  <div className="text-[11px] font-bold text-purple-300">This order has already been fully refunded.</div>
+                ) : !showCancelPrompt ? (
                   <button
-                    onClick={() => setShowCancelPrompt(true)}
+                    onClick={() => {
+                      setPinError('');
+                      setManagerPin('');
+                      setShowCancelPrompt(true);
+                    }}
                     className="px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 font-bold text-xs transition"
                   >
                     Initiate Order Cancellation
@@ -523,7 +601,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                     {order.paymentStatus === 'paid' && (
                       <div>
                         <label className="block text-[10px] text-amber-400 mb-1">
-                          Manager PIN Required for Paid Order (9999)
+                          Manager PIN Required for Paid Order
                         </label>
                         <input
                           type="password"
@@ -561,8 +639,41 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
             <div className="p-4 rounded-xl bg-amber-950/30 border border-amber-500/40 space-y-3">
               <div className="flex items-center gap-2 font-bold text-amber-400 text-xs">
                 <ShieldAlert className="w-4 h-4" />
-                Manager Void / Refund Authorization
+                {refundMode === 'item'
+                  ? 'Item Void / Refund Authorization'
+                  : refundMode === 'full'
+                  ? 'Full Order Refund Authorization'
+                  : 'Partial Order Refund Authorization'}
               </div>
+
+              <div className="text-[11px] text-slate-300">
+                Refund amount:{' '}
+                <strong className="text-amber-300">
+                  {branch.currency}{' '}
+                  {refundMode === 'item'
+                    ? order.items.find(it => it.id === refundItemId)?.totalPrice || 0
+                    : refundMode === 'full'
+                    ? order.grandTotal
+                    : refundAmount}
+                </strong>
+              </div>
+
+              {refundMode === 'partial' && (
+                <input
+                  type="number"
+                  min="1"
+                  max={Math.max(
+                    0,
+                    order.grandTotal -
+                      order.refunds.reduce((sum, refund) => sum + refund.amount, 0)
+                  )}
+                  value={refundAmount}
+                  onChange={e => setRefundAmount(Number(e.target.value) || 0)}
+                  placeholder="Partial refund amount"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono"
+                />
+              )}
+
               <input
                 type="text"
                 value={refundReason}
@@ -571,7 +682,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                 className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200"
               />
               <div>
-                <label className="block text-[10px] text-slate-400 mb-1">Enter Manager PIN (Demo: 9999)</label>
+                <label className="block text-[10px] text-slate-400 mb-1">Enter Manager PIN</label>
                 <input
                   type="password"
                   maxLength={4}
