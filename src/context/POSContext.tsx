@@ -146,6 +146,7 @@ interface POSContextType {
   // Menu CRUD
   addMenuItem: (item: Omit<MenuItem, 'id'>) => void;
   updateMenuItem: (item: MenuItem) => void;
+  deleteMenuItem: (itemId: string) => void;
   toggleMenuItemAvailability: (itemId: string) => void;
   addCategory: (category: Omit<MenuCategory, 'id'>) => void;
 
@@ -1393,6 +1394,23 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('Menu Item Updated', 'order', item.id, `Updated menu item ${item.name}`);
   };
 
+  const deleteMenuItem = (itemId: string) => {
+    const itemToDelete = menuItems.find(item => item.id === itemId);
+
+    if (!itemToDelete) {
+      return;
+    }
+
+    setMenuItems(prev => prev.filter(item => item.id !== itemId));
+
+    logAudit(
+      'Menu Item Deleted',
+      'order',
+      itemId,
+      `Deleted menu item ${itemToDelete.name}`
+    );
+  };
+
   const toggleMenuItemAvailability = (itemId: string) => {
     setMenuItems(prev =>
       prev.map(m => {
@@ -1540,6 +1558,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateInventoryItem,
         addMenuItem,
         updateMenuItem,
+        deleteMenuItem,
         toggleMenuItemAvailability,
         addCategory,
         addCustomer,
