@@ -88,7 +88,7 @@ export const PrintModal: React.FC = () => {
           <div
             id="thermal-receipt-content"
             className={`printable-area ${printFormat === '58mm' ? 'format-58mm' : ''} bg-white text-black p-4 font-mono text-[11px] leading-snug rounded shadow-lg`}
-            style={{ width: printFormat === '58mm' ? '230px' : '310px' }}
+            style={{ width: printFormat === '58mm' ? '54mm' : '72mm', boxSizing: 'border-box' }}
           >
             {/* 1. CUSTOMER RECEIPT */}
             {type === 'receipt' && order && (
