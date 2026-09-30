@@ -1,0 +1,6 @@
+{
+  "name": "Fork n Knives – Restaurant Management & POS System",
+  "description": "Complete Restaurant Management and Point of Sale (POS) system for Fork n Knives with Dine-In, Takeaway, Delivery, KOT, Kitchen Display, Inventory, and Reporting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
