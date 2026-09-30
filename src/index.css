@@ -12,42 +12,62 @@
   width: 6px;
   height: 6px;
 }
+
 ::-webkit-scrollbar-track {
   background: rgba(15, 23, 42, 0.6);
 }
+
 ::-webkit-scrollbar-thumb {
   background: rgba(100, 116, 139, 0.4);
   border-radius: 3px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(148, 163, 184, 0.7);
 }
 
-/* Thermal printer print rules */
+
+/* =========================================================
+   THERMAL PRINTER PRINT RULES
+   Optimized for dark, sharp and readable thermal receipts
+   ========================================================= */
+
 @media print {
+
   html,
   body {
-    background: #fff !important;
-    color: #000 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+
     margin: 0 !important;
     padding: 0 !important;
+
     width: 80mm !important;
     min-width: 0 !important;
     max-width: 80mm !important;
+
     height: auto !important;
     min-height: 0 !important;
+
     overflow: visible !important;
+
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
-  /* Hide everything except the thermal ticket */
+
+  /* Hide complete POS interface while printing */
   body * {
     visibility: hidden !important;
   }
 
+
+  /* Show only thermal receipt */
   #thermal-receipt-content,
   #thermal-receipt-content * {
     visibility: visible !important;
   }
+
 
   .no-print,
   nav,
@@ -59,41 +79,169 @@
     display: none !important;
   }
 
+
+  /* =====================================================
+     MAIN 80MM RECEIPT
+     ===================================================== */
+
   .printable-area,
   #thermal-receipt-content {
+
     position: absolute !important;
+
     left: 0 !important;
     top: 0 !important;
+
     box-sizing: border-box !important;
+
+    /*
+      DO NOT CHANGE THIS WIDTH.
+      72mm is intentionally retained because the current
+      80mm thermal printer is printing without cropping.
+    */
     width: 72mm !important;
     max-width: 72mm !important;
     min-width: 0 !important;
+
     height: auto !important;
     min-height: 0 !important;
+
     margin: 0 !important;
     padding: 2mm !important;
-    font-family: 'Courier New', Courier, monospace !important;
-    font-size: 10px !important;
-    line-height: 1.2 !important;
-    color: #000 !important;
-    background: #fff !important;
+
+    /*
+      Thermal-printer-friendly font stack.
+    */
+    font-family:
+      "Arial",
+      "Arial Narrow",
+      "Helvetica",
+      sans-serif !important;
+
+    font-size: 10.5px !important;
+    line-height: 1.25 !important;
+
+    /*
+      Stronger text for thermal printing.
+    */
+    font-weight: 600 !important;
+
+    color: #000000 !important;
+    background: #ffffff !important;
+
     border: 0 !important;
     border-radius: 0 !important;
     box-shadow: none !important;
+
     overflow: visible !important;
+
     page-break-before: avoid !important;
     page-break-after: avoid !important;
+
     break-before: avoid !important;
     break-after: avoid !important;
+
+    -webkit-font-smoothing: none !important;
+    text-rendering: geometricPrecision !important;
+
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
-  .printable-area.format-58mm,
-  #thermal-receipt-content.format-58mm {
-    width: 54mm !important;
-    max-width: 54mm !important;
-    padding: 1.5mm !important;
-    font-size: 9px !important;
+
+  /* =====================================================
+     FORCE RECEIPT TEXT TO PURE BLACK
+     Prevent Tailwind gray/slate text from printing faintly
+     ===================================================== */
+
+  #thermal-receipt-content,
+  #thermal-receipt-content div,
+  #thermal-receipt-content span,
+  #thermal-receipt-content p,
+  #thermal-receipt-content td,
+  #thermal-receipt-content th,
+  #thermal-receipt-content strong,
+  #thermal-receipt-content b,
+  #thermal-receipt-content small {
+    color: #000000 !important;
+    opacity: 1 !important;
   }
+
+
+  /*
+    Tailwind utility classes such as text-slate-400,
+    text-gray-500 etc. must not become light on paper.
+  */
+  #thermal-receipt-content [class*="text-slate"],
+  #thermal-receipt-content [class*="text-gray"],
+  #thermal-receipt-content [class*="text-zinc"],
+  #thermal-receipt-content [class*="text-neutral"] {
+    color: #000000 !important;
+    opacity: 1 !important;
+  }
+
+
+  /* =====================================================
+     HEADINGS
+     ===================================================== */
+
+  #thermal-receipt-content h1 {
+    color: #000000 !important;
+    font-weight: 900 !important;
+    opacity: 1 !important;
+    letter-spacing: 0.5px !important;
+  }
+
+
+  #thermal-receipt-content h2,
+  #thermal-receipt-content h3,
+  #thermal-receipt-content h4 {
+    color: #000000 !important;
+    font-weight: 800 !important;
+    opacity: 1 !important;
+  }
+
+
+  /* =====================================================
+     BOLD / IMPORTANT INFORMATION
+     ===================================================== */
+
+  #thermal-receipt-content strong,
+  #thermal-receipt-content b,
+  #thermal-receipt-content .font-bold,
+  #thermal-receipt-content .font-semibold,
+  #thermal-receipt-content .font-extrabold,
+  #thermal-receipt-content .font-black {
+    color: #000000 !important;
+    font-weight: 900 !important;
+    opacity: 1 !important;
+  }
+
+
+  /* =====================================================
+     TABLE / ORDER ITEMS
+     ===================================================== */
+
+  #thermal-receipt-content table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    color: #000000 !important;
+  }
+
+
+  #thermal-receipt-content th {
+    color: #000000 !important;
+    font-weight: 900 !important;
+    opacity: 1 !important;
+  }
+
+
+  #thermal-receipt-content td {
+    color: #000000 !important;
+    font-weight: 600 !important;
+    opacity: 1 !important;
+  }
+
 
   #thermal-receipt-content table,
   #thermal-receipt-content tr,
@@ -103,6 +251,87 @@
     break-inside: avoid !important;
     page-break-inside: avoid !important;
   }
+
+
+  /* =====================================================
+     BORDERS / SEPARATORS
+     Make receipt lines darker like standard POS receipts
+     ===================================================== */
+
+  #thermal-receipt-content .border-t,
+  #thermal-receipt-content .border-b,
+  #thermal-receipt-content .border-y,
+  #thermal-receipt-content .border {
+    border-color: #000000 !important;
+    opacity: 1 !important;
+  }
+
+
+  #thermal-receipt-content [class*="border-slate"],
+  #thermal-receipt-content [class*="border-gray"],
+  #thermal-receipt-content [class*="border-zinc"] {
+    border-color: #000000 !important;
+  }
+
+
+  /* Dashed receipt separators */
+  #thermal-receipt-content .border-dashed {
+    border-color: #000000 !important;
+  }
+
+
+  /* =====================================================
+     TOTALS
+     ===================================================== */
+
+  #thermal-receipt-content .text-lg,
+  #thermal-receipt-content .text-xl,
+  #thermal-receipt-content .text-2xl {
+    color: #000000 !important;
+    font-weight: 900 !important;
+    opacity: 1 !important;
+  }
+
+
+  /* =====================================================
+     PAID / UNPAID BOXES
+     ===================================================== */
+
+  #thermal-receipt-content [class*="border-"] {
+    border-color: #000000 !important;
+  }
+
+
+  /* =====================================================
+     REMOVE SCREEN-ONLY EFFECTS
+     ===================================================== */
+
+  #thermal-receipt-content * {
+    text-shadow: none !important;
+    box-shadow: none !important;
+  }
+
+
+  /* =====================================================
+     58MM FORMAT
+     ===================================================== */
+
+  .printable-area.format-58mm,
+  #thermal-receipt-content.format-58mm {
+
+    width: 54mm !important;
+    max-width: 54mm !important;
+
+    padding: 1.5mm !important;
+
+    font-size: 9.5px !important;
+    line-height: 1.22 !important;
+  }
+
+
+  /* =====================================================
+     PAGE
+     ===================================================== */
 
   @page {
     margin: 0;
