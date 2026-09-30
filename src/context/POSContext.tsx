@@ -332,8 +332,16 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const updatedInv = [...prevInv];
       items.forEach(item => {
         const menuItem = menuItems.find(m => m.id === item.menuItemId);
-        if (menuItem?.recipe) {
-          menuItem.recipe.forEach(recipeIng => {
+
+        // Prefer the recipe configured specifically for the ordered size / variant.
+        // Fall back to the legacy common recipe so older saved menu items continue to work.
+        const sizeRecipe = menuItem?.recipes?.find(
+          recipeGroup => recipeGroup.sizeName.trim().toLowerCase() === item.size.trim().toLowerCase()
+        );
+        const recipeIngredients = sizeRecipe?.ingredients || menuItem?.recipe || [];
+
+        if (recipeIngredients.length > 0) {
+          recipeIngredients.forEach(recipeIng => {
             const ingIdx = updatedInv.findIndex(inv => inv.id === recipeIng.ingredientId);
             if (ingIdx !== -1) {
               const consumed = recipeIng.quantity * item.quantity;
@@ -1461,9 +1469,18 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const item = inventory.find(i => i.id === itemId);
     if (!item) return { success: false, error: 'Inventory item not found.' };
 
-    const usedByMenuItems = menuItems.filter(menuItem =>
-      menuItem.recipe?.some(recipeIngredient => recipeIngredient.ingredientId === itemId)
-    );
+    const usedByMenuItems = menuItems.filter(menuItem => {
+      const usedInLegacyRecipe = menuItem.recipe?.some(
+        recipeIngredient => recipeIngredient.ingredientId === itemId
+      );
+      const usedInSizeRecipe = menuItem.recipes?.some(recipeGroup =>
+        recipeGroup.ingredients.some(
+          recipeIngredient => recipeIngredient.ingredientId === itemId
+        )
+      );
+
+      return usedInLegacyRecipe || usedInSizeRecipe;
+    });
 
     if (usedByMenuItems.length > 0) {
       return {
