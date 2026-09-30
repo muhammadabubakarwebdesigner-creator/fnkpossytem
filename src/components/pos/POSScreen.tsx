@@ -718,7 +718,8 @@ export const POSScreen: React.FC<POSScreenProps> = ({
 
           {/* TAKEAWAY INPUTS */}
           {orderType === 'takeaway' && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-center">
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-center">
               <div>
                 <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
                   Customer Mobile Phone
@@ -769,6 +770,7 @@ export const POSScreen: React.FC<POSScreenProps> = ({
                 </button>
               </div>
             )}
+            </>
           )}
 
           {/* DELIVERY INPUTS */}
