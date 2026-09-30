@@ -50,6 +50,7 @@ export const POSScreen: React.FC<POSScreenProps> = ({
     riders,
     customers,
     addCustomer,
+    updateCustomer,
     createOrder,
     addItemsToOrder,
     openPrintModal,
@@ -97,6 +98,8 @@ export const POSScreen: React.FC<POSScreenProps> = ({
     addingToOrder?.customerAlternatePhone || ''
   );
   const [matchedCustomer, setMatchedCustomer] = useState<Customer | null>(null);
+  const [customerLookup, setCustomerLookup] = useState<string>('');
+  const [showCustomerResults, setShowCustomerResults] = useState<boolean>(false);
 
   // Delivery
   const [selectedRiderId, setSelectedRiderId] = useState<string>(
@@ -142,21 +145,68 @@ export const POSScreen: React.FC<POSScreenProps> = ({
   const [orderDiscountValue, setOrderDiscountValue] = useState<number>(0);
   const [showDiscountInput, setShowDiscountInput] = useState<boolean>(false);
 
-  // Auto search customer when phone changes
+  // Customer CRM helpers
+  const normalizePhone = (value: string) => value.replace(/\D/g, '');
+
+  const fillCustomerDetails = (customer: Customer) => {
+    setMatchedCustomer(customer);
+    setCustomerPhone(customer.phone || '');
+    setCustomerName(customer.name || '');
+    setCustomerAddress(customer.address || '');
+    setCustomerArea(customer.area || '');
+    setCustomerLandmark(customer.landmark || '');
+    setCustomerAltPhone(customer.alternatePhone || '');
+    setCustomerLookup('');
+    setShowCustomerResults(false);
+  };
+
+  const clearMatchedCustomer = () => {
+    setMatchedCustomer(null);
+  };
+
+  const customerSearchResults = (() => {
+    const q = customerLookup.trim().toLowerCase();
+    if (!q) return [];
+
+    const cleanQ = normalizePhone(q);
+    return customers
+      .filter(customer => {
+        const phoneMatch =
+          cleanQ.length > 0 &&
+          (normalizePhone(customer.phone).includes(cleanQ) ||
+            normalizePhone(customer.alternatePhone || '').includes(cleanQ));
+
+        return (
+          phoneMatch ||
+          customer.name.toLowerCase().includes(q) ||
+          customer.address.toLowerCase().includes(q) ||
+          customer.area.toLowerCase().includes(q)
+        );
+      })
+      .slice(0, 8);
+  })();
+
+  // Exact customer auto-link when a complete known phone number is entered.
   useEffect(() => {
-    if (customerPhone.trim().length >= 4) {
-      const cleanPhone = customerPhone.replace(/\D/g, '');
-      const found = customers.find(c => c.phone.replace(/\D/g, '').includes(cleanPhone));
-      if (found) {
-        setMatchedCustomer(found);
-        setCustomerName(found.name);
-        setCustomerAddress(found.address);
-        setCustomerArea(found.area);
-        if (found.landmark) setCustomerLandmark(found.landmark);
-        if (found.alternatePhone) setCustomerAltPhone(found.alternatePhone);
-      } else {
-        setMatchedCustomer(null);
-      }
+    const cleanPhone = normalizePhone(customerPhone);
+    if (cleanPhone.length < 7) {
+      setMatchedCustomer(null);
+      return;
+    }
+
+    const found = customers.find(
+      customer =>
+        normalizePhone(customer.phone) === cleanPhone ||
+        normalizePhone(customer.alternatePhone || '') === cleanPhone
+    );
+
+    if (found) {
+      setMatchedCustomer(found);
+      setCustomerName(found.name || '');
+      setCustomerAddress(found.address || '');
+      setCustomerArea(found.area || '');
+      setCustomerLandmark(found.landmark || '');
+      setCustomerAltPhone(found.alternatePhone || '');
     } else {
       setMatchedCustomer(null);
     }
@@ -331,18 +381,53 @@ export const POSScreen: React.FC<POSScreenProps> = ({
       return;
     }
 
-    // Quick customer creation / link
+    // Customer CRM link/create/update
     let finalCustomerId = matchedCustomer?.id;
-    if (!finalCustomerId && (customerPhone.trim() || customerName.trim())) {
-      const created = addCustomer({
-        name: customerName.trim() || 'Guest Customer',
-        phone: customerPhone.trim() || 'N/A',
-        address: customerAddress.trim() || 'Store Pickup',
-        area: customerArea.trim() || 'Gulberg',
-        landmark: customerLandmark.trim(),
-        alternatePhone: customerAltPhone.trim(),
-      });
-      finalCustomerId = created.id;
+
+    if (matchedCustomer) {
+      const customerChanged =
+        matchedCustomer.name !== (customerName.trim() || matchedCustomer.name) ||
+        matchedCustomer.phone !== (customerPhone.trim() || matchedCustomer.phone) ||
+        (matchedCustomer.alternatePhone || '') !== customerAltPhone.trim() ||
+        (matchedCustomer.address || '') !== customerAddress.trim() ||
+        (matchedCustomer.area || '') !== customerArea.trim() ||
+        (matchedCustomer.landmark || '') !== customerLandmark.trim();
+
+      if (customerChanged) {
+        updateCustomer({
+          ...matchedCustomer,
+          name: customerName.trim() || matchedCustomer.name,
+          phone: customerPhone.trim() || matchedCustomer.phone,
+          alternatePhone: customerAltPhone.trim() || undefined,
+          address: customerAddress.trim() || matchedCustomer.address,
+          area: customerArea.trim() || matchedCustomer.area,
+          landmark: customerLandmark.trim() || undefined,
+        });
+      }
+    } else if (customerPhone.trim() || customerName.trim()) {
+      const cleanPhone = normalizePhone(customerPhone);
+      const existingByPhone =
+        cleanPhone.length > 0
+          ? customers.find(
+              customer =>
+                normalizePhone(customer.phone) === cleanPhone ||
+                normalizePhone(customer.alternatePhone || '') === cleanPhone
+            )
+          : undefined;
+
+      if (existingByPhone) {
+        finalCustomerId = existingByPhone.id;
+      } else {
+        const created = addCustomer({
+          name: customerName.trim() || 'Guest Customer',
+          phone: customerPhone.trim() || 'N/A',
+          address: customerAddress.trim() || 'Store Pickup',
+          area: customerArea.trim() || 'Gulberg',
+          landmark: customerLandmark.trim() || undefined,
+          alternatePhone: customerAltPhone.trim() || undefined,
+        });
+        finalCustomerId = created.id;
+      }
     }
 
     // Get selected Table and Waiter metadata
@@ -391,7 +476,12 @@ export const POSScreen: React.FC<POSScreenProps> = ({
     setCustomerPhone('');
     setCustomerName('');
     setCustomerAddress('');
+    setCustomerArea('');
     setCustomerLandmark('');
+    setCustomerAltPhone('');
+    setMatchedCustomer(null);
+    setCustomerLookup('');
+    setShowCustomerResults(false);
     setOrderNotes('');
 
     if (proceedToPayment) {
@@ -500,7 +590,63 @@ export const POSScreen: React.FC<POSScreenProps> = ({
 
         {/* 2. DYNAMIC INPUT STRIP ACCORDING TO ORDER TYPE */}
         <div className="bg-slate-900/60 border-b border-slate-800 p-2.5 text-xs">
-          {/* DINE-IN INPUTS */}
+          {!addingToOrder && (orderType === 'takeaway' || orderType === 'delivery') && (
+            <div className="mb-2 relative">
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+                Find Existing Customer
+              </label>
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-2 text-slate-500" />
+                <input
+                  type="text"
+                  value={customerLookup}
+                  onFocus={() => setShowCustomerResults(true)}
+                  onChange={e => {
+                    setCustomerLookup(e.target.value);
+                    setShowCustomerResults(true);
+                  }}
+                  placeholder="Search customer by name, phone, address or area..."
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-slate-100 focus:border-amber-500 focus:outline-none"
+                />
+              </div>
+
+              {showCustomerResults && customerLookup.trim() && (
+                <div className="absolute z-40 left-0 right-0 mt-1 max-h-56 overflow-y-auto bg-slate-950 border border-slate-700 rounded-xl shadow-2xl">
+                  {customerSearchResults.length === 0 ? (
+                    <div className="p-3 text-[11px] text-slate-500">
+                      No existing customer found. Enter the new customer's details below.
+                    </div>
+                  ) : (
+                    customerSearchResults.map(customer => (
+                      <button
+                        key={customer.id}
+                        type="button"
+                        onClick={() => fillCustomerDetails(customer)}
+                        className="w-full p-2.5 text-left border-b last:border-b-0 border-slate-800 hover:bg-slate-900 transition"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <div className="font-bold text-slate-100">{customer.name}</div>
+                            <div className="text-[10px] text-slate-400">
+                              {customer.phone} • {customer.area}
+                            </div>
+                          </div>
+                          <div className="text-[10px] text-amber-400 font-mono">
+                            {customer.totalOrders} orders
+                          </div>
+                        </div>
+                        <div className="text-[10px] text-slate-500 truncate mt-0.5">
+                          {customer.address}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+                    {/* DINE-IN INPUTS */}
           {orderType === 'dine_in' && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 items-center">
               <div>
@@ -612,6 +758,17 @@ export const POSScreen: React.FC<POSScreenProps> = ({
                 />
               </div>
             </div>
+            {matchedCustomer && (
+              <div className="mt-2 flex items-center justify-between gap-2 p-1.5 bg-emerald-950/40 border border-emerald-500/30 rounded text-[11px] text-emerald-300">
+                <span className="flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                  Existing Customer: <strong>{matchedCustomer.name}</strong> • {matchedCustomer.totalOrders} orders • {branch.currency} {matchedCustomer.totalSpent.toLocaleString()} spent
+                </span>
+                <button type="button" onClick={clearMatchedCustomer} className="text-emerald-300 hover:text-white">
+                  Change
+                </button>
+              </div>
+            )}
           )}
 
           {/* DELIVERY INPUTS */}
@@ -676,7 +833,7 @@ export const POSScreen: React.FC<POSScreenProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
                 <div className="sm:col-span-2">
                   <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
                     Complete Address *
@@ -702,14 +859,43 @@ export const POSScreen: React.FC<POSScreenProps> = ({
                     className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-100"
                   />
                 </div>
+
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+                    Alternate Phone
+                  </label>
+                  <input
+                    type="text"
+                    value={customerAltPhone}
+                    onChange={e => setCustomerAltPhone(e.target.value)}
+                    placeholder="0321-..."
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-100 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+                    Landmark
+                  </label>
+                  <input
+                    type="text"
+                    value={customerLandmark}
+                    onChange={e => setCustomerLandmark(e.target.value)}
+                    placeholder="Near mosque / market"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-100"
+                  />
+                </div>
               </div>
 
               {matchedCustomer && (
-                <div className="flex items-center gap-2 p-1.5 bg-emerald-950/40 border border-emerald-500/30 rounded text-[11px] text-emerald-300">
-                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                  <span>
+                <div className="flex items-center justify-between gap-2 p-1.5 bg-emerald-950/40 border border-emerald-500/30 rounded text-[11px] text-emerald-300">
+                  <span className="flex items-center gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
                     Existing Customer: <strong>{matchedCustomer.name}</strong> • Orders: {matchedCustomer.totalOrders} • Total Spent: {branch.currency} {matchedCustomer.totalSpent.toLocaleString()}
                   </span>
+                  <button type="button" onClick={clearMatchedCustomer} className="text-emerald-300 hover:text-white">
+                    Change
+                  </button>
                 </div>
               )}
             </div>
