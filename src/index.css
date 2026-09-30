@@ -25,11 +25,28 @@
 
 /* Thermal printer print rules */
 @media print {
+  html,
   body {
     background: #fff !important;
     color: #000 !important;
     margin: 0 !important;
     padding: 0 !important;
+    width: 80mm !important;
+    min-width: 0 !important;
+    max-width: 80mm !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* Hide everything except the thermal ticket */
+  body * {
+    visibility: hidden !important;
+  }
+
+  #thermal-receipt-content,
+  #thermal-receipt-content * {
+    visibility: visible !important;
   }
 
   .no-print,
@@ -42,27 +59,49 @@
     display: none !important;
   }
 
-  .printable-area {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 80mm !important;
-    max-width: 80mm !important;
-    padding: 2mm 3mm !important;
+  .printable-area,
+  #thermal-receipt-content {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    box-sizing: border-box !important;
+    width: 72mm !important;
+    max-width: 72mm !important;
+    min-width: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
     margin: 0 !important;
+    padding: 2mm !important;
     font-family: 'Courier New', Courier, monospace !important;
-    font-size: 11px !important;
-    line-height: 1.25 !important;
+    font-size: 10px !important;
+    line-height: 1.2 !important;
     color: #000 !important;
     background: #fff !important;
-    page-break-after: always;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    page-break-before: avoid !important;
+    page-break-after: avoid !important;
+    break-before: avoid !important;
+    break-after: avoid !important;
   }
 
-  .printable-area.format-58mm {
-    width: 58mm !important;
-    max-width: 58mm !important;
-    font-size: 10px !important;
-    padding: 1mm 2mm !important;
+  .printable-area.format-58mm,
+  #thermal-receipt-content.format-58mm {
+    width: 54mm !important;
+    max-width: 54mm !important;
+    padding: 1.5mm !important;
+    font-size: 9px !important;
+  }
+
+  #thermal-receipt-content table,
+  #thermal-receipt-content tr,
+  #thermal-receipt-content td,
+  #thermal-receipt-content th,
+  #thermal-receipt-content p {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
 
   @page {
