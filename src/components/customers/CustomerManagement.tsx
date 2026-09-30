@@ -11,7 +11,10 @@ import {
   DollarSign,
   ShoppingBag,
   Eye,
-  FileText
+  FileText,
+  Pencil,
+  Mail,
+  StickyNote
 } from 'lucide-react';
 
 interface CustomerManagementProps {
@@ -19,11 +22,12 @@ interface CustomerManagementProps {
 }
 
 export const CustomerManagement: React.FC<CustomerManagementProps> = ({ onSelectOrder }) => {
-  const { branch, customers, orders, addCustomer } = usePOS();
+  const { branch, customers, orders, addCustomer, updateCustomer } = usePOS();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
 
   // New customer form
   const [name, setName] = useState('');
@@ -35,36 +39,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({ onSelect
   const [landmark, setLandmark] = useState('');
   const [notes, setNotes] = useState('');
 
-  const filteredCustomers = customers.filter(c => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      c.name.toLowerCase().includes(q) ||
-      c.phone.includes(q) ||
-      c.address.toLowerCase().includes(q) ||
-      c.area.toLowerCase().includes(q)
-    );
-  });
-
-  const handleCreateCustomer = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim() || !phone.trim() || !address.trim()) {
-      alert('Name, Phone, and Address are required.');
-      return;
-    }
-
-    addCustomer({
-      name: name.trim(),
-      phone: phone.trim(),
-      alternatePhone: altPhone.trim() || undefined,
-      email: email.trim() || undefined,
-      address: address.trim(),
-      area: area.trim() || 'Gulberg',
-      landmark: landmark.trim() || undefined,
-      notes: notes.trim() || undefined,
-    });
-
-    setShowAddModal(false);
+  const resetForm = () => {
     setName('');
     setPhone('');
     setAltPhone('');
@@ -73,6 +48,87 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({ onSelect
     setArea('');
     setLandmark('');
     setNotes('');
+    setEditingCustomer(null);
+  };
+
+  const openAddCustomer = () => {
+    resetForm();
+    setShowAddModal(true);
+  };
+
+  const openEditCustomer = (customer: Customer) => {
+    setEditingCustomer(customer);
+    setName(customer.name || '');
+    setPhone(customer.phone || '');
+    setAltPhone(customer.alternatePhone || '');
+    setEmail(customer.email || '');
+    setAddress(customer.address || '');
+    setArea(customer.area || '');
+    setLandmark(customer.landmark || '');
+    setNotes(customer.notes || '');
+    setShowAddModal(true);
+  };
+
+  const filteredCustomers = customers.filter(c => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      c.name.toLowerCase().includes(q) ||
+      c.phone.includes(q) ||
+      (c.alternatePhone || '').includes(q) ||
+      (c.email || '').toLowerCase().includes(q) ||
+      c.address.toLowerCase().includes(q) ||
+      c.area.toLowerCase().includes(q) ||
+      (c.landmark || '').toLowerCase().includes(q) ||
+      (c.notes || '').toLowerCase().includes(q)
+    );
+  });
+
+  const handleSaveCustomer = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !phone.trim() || !address.trim()) {
+      alert('Name, Phone, and Address are required.');
+      return;
+    }
+
+    const duplicatePhone = customers.find(
+      customer =>
+        customer.phone.replace(/\D/g, '') === phone.trim().replace(/\D/g, '') &&
+        customer.id !== editingCustomer?.id
+    );
+
+    if (duplicatePhone) {
+      alert(`This phone number is already linked to ${duplicatePhone.name}.`);
+      return;
+    }
+
+    if (editingCustomer) {
+      updateCustomer({
+        ...editingCustomer,
+        name: name.trim(),
+        phone: phone.trim(),
+        alternatePhone: altPhone.trim() || undefined,
+        email: email.trim() || undefined,
+        address: address.trim(),
+        area: area.trim() || 'Gulberg',
+        landmark: landmark.trim() || undefined,
+        notes: notes.trim() || undefined,
+      });
+    } else {
+      addCustomer({
+        name: name.trim(),
+        phone: phone.trim(),
+        alternatePhone: altPhone.trim() || undefined,
+        email: email.trim() || undefined,
+        address: address.trim(),
+        area: area.trim() || 'Gulberg',
+        landmark: landmark.trim() || undefined,
+        notes: notes.trim() || undefined,
+      });
+    }
+
+    setShowAddModal(false);
+    resetForm();
   };
 
   const customerOrders = selectedCustomer
@@ -96,7 +152,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({ onSelect
         </div>
 
         <button
-          onClick={() => setShowAddModal(true)}
+          onClick={openAddCustomer}
           className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow transition"
         >
           <Plus className="w-4 h-4" />
@@ -131,7 +187,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({ onSelect
                 <th className="p-3 text-right">Lifetime Spend</th>
                 <th className="p-3 text-right">Average Order</th>
                 <th className="p-3">Last Order</th>
-                <th className="p-3 text-center">History</th>
+                <th className="p-3 text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/80">
@@ -166,14 +222,23 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({ onSelect
                     <td className="p-3 text-slate-400 font-mono text-[11px]">
                       {customer.lastOrderDate || 'No orders'}
                     </td>
-                    <td className="p-3 text-center">
-                      <button
-                        onClick={() => setSelectedCustomer(customer)}
-                        className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold flex items-center gap-1 mx-auto transition"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>Orders</span>
-                      </button>
+                    <td className="p-3">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          onClick={() => setSelectedCustomer(customer)}
+                          className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold flex items-center gap-1 transition"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Orders</span>
+                        </button>
+                        <button
+                          onClick={() => openEditCustomer(customer)}
+                          className="px-2.5 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 text-xs font-semibold flex items-center gap-1 transition"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                          <span>Edit</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -204,7 +269,38 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({ onSelect
               </button>
             </div>
 
-            {/* Metrics */}
+            <div className="grid md:grid-cols-2 gap-2 text-xs">
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+                <div className="flex items-center gap-2 text-slate-300">
+                  <Phone className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{selectedCustomer.phone}</span>
+                  {selectedCustomer.alternatePhone && <span>• {selectedCustomer.alternatePhone}</span>}
+                </div>
+                {selectedCustomer.email && (
+                  <div className="flex items-center gap-2 text-slate-400">
+                    <Mail className="w-3.5 h-3.5" />
+                    <span>{selectedCustomer.email}</span>
+                  </div>
+                )}
+              </div>
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+                <div className="flex items-start gap-2 text-slate-300">
+                  <MapPin className="w-3.5 h-3.5 text-amber-400 mt-0.5" />
+                  <span>
+                    {selectedCustomer.address}, {selectedCustomer.area}
+                    {selectedCustomer.landmark ? ` • ${selectedCustomer.landmark}` : ''}
+                  </span>
+                </div>
+                {selectedCustomer.notes && (
+                  <div className="flex items-start gap-2 text-slate-400">
+                    <StickyNote className="w-3.5 h-3.5 mt-0.5" />
+                    <span>{selectedCustomer.notes}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+                        {/* Metrics */}
             <div className="grid grid-cols-3 gap-3 text-center text-xs">
               <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
                 <span className="text-slate-400 text-[10px] uppercase font-bold">Total Orders</span>
@@ -280,14 +376,14 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({ onSelect
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
           <form
-            onSubmit={handleCreateCustomer}
+            onSubmit={handleSaveCustomer}
             className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl p-5 space-y-4"
           >
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="text-base font-bold text-slate-100">Add Customer Profile</h3>
+              <h3 className="text-base font-bold text-slate-100">{editingCustomer ? 'Edit Customer Profile' : 'Add Customer Profile'}</h3>
               <button
                 type="button"
-                onClick={() => setShowAddModal(false)}
+                onClick={() => { setShowAddModal(false); resetForm(); }}
                 className="text-slate-400 hover:text-white"
               >
                 ✕
@@ -381,7 +477,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({ onSelect
             <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
               <button
                 type="button"
-                onClick={() => setShowAddModal(false)}
+                onClick={() => { setShowAddModal(false); resetForm(); }}
                 className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold"
               >
                 Cancel
@@ -390,7 +486,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({ onSelect
                 type="submit"
                 className="px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs"
               >
-                Save Customer
+                {editingCustomer ? 'Update Customer' : 'Save Customer'}
               </button>
             </div>
           </form>
