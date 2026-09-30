@@ -624,6 +624,24 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
     }
 
+    // Keep CRM lifetime spend in sync when an existing order grows.
+    // The order count must NOT increase because this is still the same order.
+    if (order.customerId) {
+      const addedValue = grandTotal - order.grandTotal;
+      if (addedValue !== 0) {
+        setCustomers(prev =>
+          prev.map(customer =>
+            customer.id === order.customerId
+              ? {
+                  ...customer,
+                  totalSpent: Math.max(0, customer.totalSpent + addedValue),
+                }
+              : customer
+          )
+        );
+      }
+    }
+
     setKitchenTickets(prev => [additionalKot, ...prev]);
 
     setOrders(prev =>
@@ -1562,7 +1580,32 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateCustomer = (customer: Customer) => {
-    setCustomers(prev => prev.map(c => (c.id === customer.id ? customer : c)));
+    const existing = customers.find(c => c.id === customer.id);
+    if (!existing) return;
+
+    // CRM edits may change contact/address details, but order-derived statistics
+    // remain controlled by the POS backend.
+    const updatedCustomer: Customer = {
+      ...customer,
+      id: existing.id,
+      createdAt: existing.createdAt,
+      totalOrders: existing.totalOrders,
+      totalSpent: existing.totalSpent,
+      lastOrderDate: existing.lastOrderDate,
+    };
+
+    setCustomers(prev =>
+      prev.map(c => (c.id === updatedCustomer.id ? updatedCustomer : c))
+    );
+
+    logAudit(
+      'Customer Updated',
+      'order',
+      updatedCustomer.id,
+      `Updated customer profile for ${updatedCustomer.name} (${updatedCustomer.phone})`,
+      JSON.stringify(existing),
+      JSON.stringify(updatedCustomer)
+    );
   };
 
   // Reset Demo Data
