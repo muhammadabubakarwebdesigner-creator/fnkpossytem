@@ -52,6 +52,7 @@ interface POSContextType {
   orders: Order[];
   kitchenTickets: KitchenTicket[];
   inventory: InventoryItem[];
+  stockTransactions: StockTransaction[];
   suppliers: Supplier[];
   expenses: RestaurantExpense[];
   currentShift: Shift | null;
@@ -142,6 +143,7 @@ interface POSContextType {
   adjustStock: (ingredientId: string, quantity: number, type: StockTransaction['type'], reason: string) => void;
   addInventoryItem: (item: Omit<InventoryItem, 'id' | 'lastUpdated'>) => void;
   updateInventoryItem: (item: InventoryItem) => void;
+  deleteInventoryItem: (itemId: string) => { success: boolean; error?: string };
 
   // Menu CRUD
   addMenuItem: (item: Omit<MenuItem, 'id'>) => void;
@@ -191,6 +193,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [orders, setOrders] = useState<Order[]>(savedData?.orders || initialOrders);
   const [kitchenTickets, setKitchenTickets] = useState<KitchenTicket[]>(savedData?.kitchenTickets || initialKitchenTickets);
   const [inventory, setInventory] = useState<InventoryItem[]>(savedData?.inventory || initialInventory);
+  const [stockTransactions, setStockTransactions] = useState<StockTransaction[]>(savedData?.stockTransactions || []);
   const [suppliers] = useState<Supplier[]>(savedData?.suppliers || initialSuppliers);
   const [expenses, setExpenses] = useState<RestaurantExpense[]>(savedData?.expenses || initialExpenses);
   const [currentShift, setCurrentShift] = useState<Shift | null>(savedData?.currentShift || initialCurrentShift);
@@ -218,6 +221,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         orders,
         kitchenTickets,
         inventory,
+        stockTransactions,
         suppliers,
         expenses,
         currentShift,
@@ -241,6 +245,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     orders,
     kitchenTickets,
     inventory,
+    stockTransactions,
     suppliers,
     expenses,
     currentShift,
@@ -333,11 +338,27 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (ingIdx !== -1) {
               const consumed = recipeIng.quantity * item.quantity;
               const newStock = Math.max(0, Number((updatedInv[ingIdx].currentStock - consumed).toFixed(2)));
+              const ingredient = updatedInv[ingIdx];
               updatedInv[ingIdx] = {
-                ...updatedInv[ingIdx],
+                ...ingredient,
                 currentStock: newStock,
                 lastUpdated: new Date().toISOString().split('T')[0],
               };
+
+              const transaction: StockTransaction = {
+                id: `stk_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+                ingredientId: ingredient.id,
+                ingredientName: ingredient.name,
+                type: 'order_consumption',
+                quantity: consumed,
+                unit: ingredient.unit,
+                reason: `Recipe consumption for order #${orderRef} (${item.name} x${item.quantity})`,
+                referenceId: orderRef,
+                employeeName: currentEmployee.name,
+                timestamp: new Date().toISOString(),
+              };
+              setStockTransactions(prev => [transaction, ...prev]);
+
               // Check for low stock warning
               if (newStock <= updatedInv[ingIdx].minStock) {
                 addNotification(
@@ -1346,22 +1367,64 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Inventory
   const adjustStock = (ingredientId: string, quantity: number, type: StockTransaction['type'], reason: string) => {
+    const item = inventory.find(i => i.id === ingredientId);
+    if (!item || quantity <= 0) return;
+
+    const normalizedQuantity = Number(quantity.toFixed(2));
+    const isIncoming = type === 'stock_in';
+    const isAbsoluteAdjustment = type === 'adjustment';
+
+    let newStock = item.currentStock;
+    if (isAbsoluteAdjustment) {
+      newStock = Math.max(0, normalizedQuantity);
+    } else {
+      const delta = isIncoming ? normalizedQuantity : -normalizedQuantity;
+      newStock = Math.max(0, Number((item.currentStock + delta).toFixed(2)));
+    }
+
     setInventory(prev =>
-      prev.map(item => {
-        if (item.id === ingredientId) {
-          const delta = type === 'stock_in' ? quantity : -quantity;
-          const newStock = Math.max(0, Number((item.currentStock + delta).toFixed(2)));
-          return {
-            ...item,
-            currentStock: newStock,
-            lastUpdated: new Date().toISOString().split('T')[0],
-          };
-        }
-        return item;
-      })
+      prev.map(invItem =>
+        invItem.id === ingredientId
+          ? {
+              ...invItem,
+              currentStock: newStock,
+              lastUpdated: new Date().toISOString().split('T')[0],
+            }
+          : invItem
+      )
     );
 
-    logAudit('Inventory Stock Transaction', 'inventory', ingredientId, `${type.toUpperCase()}: ${quantity} units adjusted. Reason: ${reason}`);
+    const transaction: StockTransaction = {
+      id: `stk_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+      ingredientId: item.id,
+      ingredientName: item.name,
+      type,
+      quantity: normalizedQuantity,
+      unit: item.unit,
+      reason,
+      employeeName: currentEmployee.name,
+      timestamp: new Date().toISOString(),
+    };
+    setStockTransactions(prev => [transaction, ...prev]);
+
+    logAudit(
+      'Inventory Stock Transaction',
+      'inventory',
+      ingredientId,
+      `${type.toUpperCase()}: ${normalizedQuantity} ${item.unit}. Stock changed from ${item.currentStock} to ${newStock}. Reason: ${reason}`,
+      String(item.currentStock),
+      String(newStock)
+    );
+
+    if (newStock <= item.minStock) {
+      addNotification(
+        `Low Stock Alert: ${item.name}`,
+        `${item.name} is now at ${newStock} ${item.unit} (Minimum threshold: ${item.minStock} ${item.unit}).`,
+        'inventory',
+        'warning',
+        'inventory'
+      );
+    }
   };
 
   const addInventoryItem = (itemData: Omit<InventoryItem, 'id' | 'lastUpdated'>) => {
@@ -1375,8 +1438,43 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateInventoryItem = (item: InventoryItem) => {
-    setInventory(prev => prev.map(i => (i.id === item.id ? item : i)));
-    logAudit('Inventory Item Updated', 'inventory', item.id, `Updated inventory item ${item.name}`);
+    const existing = inventory.find(i => i.id === item.id);
+    if (!existing) return;
+
+    const updatedItem: InventoryItem = {
+      ...item,
+      lastUpdated: new Date().toISOString().split('T')[0],
+    };
+
+    setInventory(prev => prev.map(i => (i.id === item.id ? updatedItem : i)));
+    logAudit(
+      'Inventory Item Updated',
+      'inventory',
+      item.id,
+      `Updated inventory item ${updatedItem.name}`,
+      JSON.stringify(existing),
+      JSON.stringify(updatedItem)
+    );
+  };
+
+  const deleteInventoryItem = (itemId: string) => {
+    const item = inventory.find(i => i.id === itemId);
+    if (!item) return { success: false, error: 'Inventory item not found.' };
+
+    const usedByMenuItems = menuItems.filter(menuItem =>
+      menuItem.recipe?.some(recipeIngredient => recipeIngredient.ingredientId === itemId)
+    );
+
+    if (usedByMenuItems.length > 0) {
+      return {
+        success: false,
+        error: `Cannot delete ${item.name}. It is used in recipe(s): ${usedByMenuItems.map(m => m.name).join(', ')}. Remove it from those recipes first.`,
+      };
+    }
+
+    setInventory(prev => prev.filter(i => i.id !== itemId));
+    logAudit('Inventory Item Deleted', 'inventory', itemId, `Deleted inventory item ${item.name}`);
+    return { success: true };
   };
 
   // Menu Management
@@ -1463,6 +1561,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setOrders(initialOrders);
     setKitchenTickets(initialKitchenTickets);
     setInventory(initialInventory);
+    setStockTransactions([]);
     setExpenses(initialExpenses);
     setCurrentShift(initialCurrentShift);
     setShiftHistory([]);
@@ -1511,6 +1610,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         orders,
         kitchenTickets,
         inventory,
+        stockTransactions,
         suppliers,
         expenses,
         currentShift,
@@ -1556,6 +1656,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         adjustStock,
         addInventoryItem,
         updateInventoryItem,
+        deleteInventoryItem,
         addMenuItem,
         updateMenuItem,
         deleteMenuItem,
