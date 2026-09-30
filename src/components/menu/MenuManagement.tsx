@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { usePOS } from '../../context/POSContext';
-import { MenuItem, KitchenStation, RecipeIngredient } from '../../types';
+import { MenuItem, KitchenStation, RecipeIngredient, MenuItemRecipe } from '../../types';
 import {
   BookOpen,
   Plus,
@@ -60,7 +60,8 @@ export const MenuManagement: React.FC = () => {
     { name: 'Regular', price: 500, costPrice: 175 },
   ]);
 
-  const [recipe, setRecipe] = useState<RecipeIngredient[]>([]);
+  const [recipes, setRecipes] = useState<MenuItemRecipe[]>([]);
+  const [activeRecipeSize, setActiveRecipeSize] = useState('Regular');
   const [recipeIngredientId, setRecipeIngredientId] = useState('');
   const [recipeQuantity, setRecipeQuantity] = useState<number>(1);
 
@@ -91,7 +92,8 @@ export const MenuManagement: React.FC = () => {
     setStation('pizza_kitchen');
     setAvailable(true);
     setSizes([{ name: 'Regular', price: 500, costPrice: 175 }]);
-    setRecipe([]);
+    setRecipes([]);
+    setActiveRecipeSize('Regular');
     setRecipeIngredientId('');
     setRecipeQuantity(1);
   };
@@ -201,10 +203,41 @@ export const MenuManagement: React.FC = () => {
   };
 
   const removeSize = (index: number) => {
-    setSizes(prev => prev.filter((_, sizeIndex) => sizeIndex !== index));
+    const removedName = sizes[index]?.name.trim();
+    const remaining = sizes.filter((_, sizeIndex) => sizeIndex !== index);
+
+    setSizes(remaining);
+
+    if (removedName && activeRecipeSize === removedName) {
+      setActiveRecipeSize(remaining[0]?.name.trim() || 'Regular');
+    }
+  };
+
+  const currentRecipe =
+    recipes.find(recipeGroup => recipeGroup.sizeName === activeRecipeSize)?.ingredients || [];
+
+  const setCurrentRecipe = (ingredients: RecipeIngredient[]) => {
+    setRecipes(prev => {
+      const exists = prev.some(group => group.sizeName === activeRecipeSize);
+
+      if (exists) {
+        return prev.map(group =>
+          group.sizeName === activeRecipeSize
+            ? { ...group, ingredients }
+            : group
+        );
+      }
+
+      return [...prev, { sizeName: activeRecipeSize, ingredients }];
+    });
   };
 
   const addRecipeIngredient = () => {
+    if (!activeRecipeSize) {
+      window.alert('Please select a product size / variant first.');
+      return;
+    }
+
     if (!recipeIngredientId) {
       window.alert('Please select a raw ingredient.');
       return;
@@ -221,13 +254,13 @@ export const MenuManagement: React.FC = () => {
       return;
     }
 
-    if (recipe.some(item => item.ingredientId === ingredient.id)) {
-      window.alert(`${ingredient.name} is already included in this recipe.`);
+    if (currentRecipe.some(item => item.ingredientId === ingredient.id)) {
+      window.alert(`${ingredient.name} is already included in the ${activeRecipeSize} recipe.`);
       return;
     }
 
-    setRecipe(prev => [
-      ...prev,
+    setCurrentRecipe([
+      ...currentRecipe,
       {
         ingredientId: ingredient.id,
         ingredientName: ingredient.name,
@@ -242,8 +275,9 @@ export const MenuManagement: React.FC = () => {
 
   const updateRecipeQuantity = (ingredientId: string, quantity: number) => {
     const safeQuantity = Number.isFinite(quantity) ? Math.max(0, quantity) : 0;
-    setRecipe(prev =>
-      prev.map(item =>
+
+    setCurrentRecipe(
+      currentRecipe.map(item =>
         item.ingredientId === ingredientId
           ? { ...item, quantity: safeQuantity }
           : item
@@ -252,10 +286,26 @@ export const MenuManagement: React.FC = () => {
   };
 
   const removeRecipeIngredient = (ingredientId: string) => {
-    setRecipe(prev => prev.filter(item => item.ingredientId !== ingredientId));
+    setCurrentRecipe(
+      currentRecipe.filter(item => item.ingredientId !== ingredientId)
+    );
   };
 
-  const estimatedRecipeCost = recipe.reduce((total, recipeItem) => {
+  const copyRecipeFromSize = (sourceSize: string) => {
+    if (!sourceSize || sourceSize === activeRecipeSize) return;
+
+    const source =
+      recipes.find(group => group.sizeName === sourceSize)?.ingredients || [];
+
+    if (source.length === 0) {
+      window.alert(`No recipe has been configured for ${sourceSize}.`);
+      return;
+    }
+
+    setCurrentRecipe(source.map(item => ({ ...item })));
+  };
+
+  const estimatedRecipeCost = currentRecipe.reduce((total, recipeItem) => {
     const inventoryItem = inventory.find(
       item => item.id === recipeItem.ingredientId
     );
@@ -264,7 +314,7 @@ export const MenuManagement: React.FC = () => {
     return total + recipeItem.quantity * inventoryItem.purchaseCost;
   }, 0);
 
-  const recipeStockWarnings = recipe.filter(recipeItem => {
+  const recipeStockWarnings = currentRecipe.filter(recipeItem => {
     const inventoryItem = inventory.find(
       item => item.id === recipeItem.ingredientId
     );
@@ -324,7 +374,16 @@ export const MenuManagement: React.FC = () => {
         station,
         available,
         sizes: cleanSizes,
-        recipe: recipe.filter(item => item.quantity > 0),
+        recipe: undefined,
+        recipes: recipes
+          .filter(group =>
+            cleanSizes.some(size => size.name === group.sizeName)
+          )
+          .map(group => ({
+            ...group,
+            ingredients: group.ingredients.filter(item => item.quantity > 0),
+          }))
+          .filter(group => group.ingredients.length > 0),
       });
     } else {
       addMenuItem({
@@ -335,7 +394,16 @@ export const MenuManagement: React.FC = () => {
         station,
         available,
         sizes: cleanSizes,
-        recipe: recipe.filter(item => item.quantity > 0),
+        recipe: undefined,
+        recipes: recipes
+          .filter(group =>
+            cleanSizes.some(size => size.name === group.sizeName)
+          )
+          .map(group => ({
+            ...group,
+            ingredients: group.ingredients.filter(item => item.quantity > 0),
+          }))
+          .filter(group => group.ingredients.length > 0),
       });
     }
 
@@ -367,14 +435,26 @@ export const MenuManagement: React.FC = () => {
           ]
     );
 
-    setRecipe(
-      (item.recipe || []).map(recipeItem => ({
-        ingredientId: recipeItem.ingredientId,
-        ingredientName: recipeItem.ingredientName,
-        quantity: recipeItem.quantity,
-        unit: recipeItem.unit,
-      }))
-    );
+    const itemSizeNames =
+      item.sizes && item.sizes.length > 0
+        ? item.sizes.map(size => size.name)
+        : ['Regular'];
+
+    const loadedRecipes: MenuItemRecipe[] =
+      item.recipes && item.recipes.length > 0
+        ? item.recipes.map(group => ({
+            sizeName: group.sizeName,
+            ingredients: group.ingredients.map(recipeItem => ({ ...recipeItem })),
+          }))
+        : item.recipe && item.recipe.length > 0
+        ? itemSizeNames.map(sizeName => ({
+            sizeName,
+            ingredients: item.recipe!.map(recipeItem => ({ ...recipeItem })),
+          }))
+        : [];
+
+    setRecipes(loadedRecipes);
+    setActiveRecipeSize(itemSizeNames[0]);
     setRecipeIngredientId('');
     setRecipeQuantity(1);
 
@@ -518,10 +598,12 @@ export const MenuManagement: React.FC = () => {
                         </p>
                       )}
                       <div className="mt-1 text-[10px] font-semibold">
-                        {item.recipe && item.recipe.length > 0 ? (
+                        {item.recipes && item.recipes.length > 0 ? (
                           <span className="text-emerald-400">
-                            Recipe linked: {item.recipe.length} ingredient{item.recipe.length === 1 ? '' : 's'}
+                            Size recipes: {item.recipes.length}/{item.sizes.length} configured
                           </span>
+                        ) : item.recipe && item.recipe.length > 0 ? (
+                          <span className="text-amber-400">Legacy recipe linked</span>
                         ) : (
                           <span className="text-slate-600">No recipe linked</span>
                         )}
@@ -859,22 +941,22 @@ export const MenuManagement: React.FC = () => {
                 </div>
               </div>
 
-              {/* Recipe Builder */}
+              {/* Size-wise Recipe Builder */}
               <div className="border border-slate-700 rounded-xl overflow-hidden">
                 <div className="bg-slate-950/70 p-3 border-b border-slate-700 flex items-center justify-between gap-3 flex-wrap">
                   <div>
                     <h4 className="text-xs font-black text-slate-100 flex items-center gap-1.5">
                       <UtensilsCrossed className="w-4 h-4 text-emerald-400" />
-                      Recipe / Raw Ingredients
+                      Size-wise Recipe / Raw Ingredients
                     </h4>
                     <p className="text-[10px] text-slate-500 mt-0.5">
-                      Quantities entered here are consumed automatically for one unit of this menu product.
+                      Each size / variant has its own recipe. Only the recipe for the size sold will be consumed from inventory.
                     </p>
                   </div>
 
                   <div className="px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
                     <div className="text-[9px] uppercase tracking-wider font-bold text-emerald-400">
-                      Estimated Recipe Cost
+                      {activeRecipeSize} Recipe Cost
                     </div>
                     <div className="font-mono font-black text-sm text-emerald-300 flex items-center gap-1">
                       <Calculator className="w-3.5 h-3.5" />
@@ -884,16 +966,84 @@ export const MenuManagement: React.FC = () => {
                 </div>
 
                 <div className="p-3 space-y-3">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-2">
+                      Select Size / Variant Recipe
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {sizes
+                        .filter(size => size.name.trim())
+                        .map(size => {
+                          const sizeName = size.name.trim();
+                          const ingredientCount =
+                            recipes.find(group => group.sizeName === sizeName)
+                              ?.ingredients.length || 0;
+
+                          return (
+                            <button
+                              key={sizeName}
+                              type="button"
+                              onClick={() => {
+                                setActiveRecipeSize(sizeName);
+                                setRecipeIngredientId('');
+                                setRecipeQuantity(1);
+                              }}
+                              className={`px-3 py-2 rounded-lg border text-xs font-black transition ${
+                                activeRecipeSize === sizeName
+                                  ? 'bg-emerald-500 border-emerald-500 text-slate-950'
+                                  : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+                              }`}
+                            >
+                              {sizeName}
+                              <span className={`ml-1.5 text-[9px] ${
+                                activeRecipeSize === sizeName
+                                  ? 'text-slate-800'
+                                  : ingredientCount > 0
+                                  ? 'text-emerald-400'
+                                  : 'text-slate-500'
+                              }`}>
+                                ({ingredientCount})
+                              </span>
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </div>
+
+                  {sizes.filter(size => size.name.trim()).length > 1 && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] font-bold text-slate-500">
+                        Copy ingredients to {activeRecipeSize} from:
+                      </span>
+                      {sizes
+                        .filter(
+                          size =>
+                            size.name.trim() &&
+                            size.name.trim() !== activeRecipeSize
+                        )
+                        .map(size => (
+                          <button
+                            key={size.name}
+                            type="button"
+                            onClick={() => copyRecipeFromSize(size.name.trim())}
+                            className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[10px] font-bold text-slate-300"
+                          >
+                            {size.name}
+                          </button>
+                        ))}
+                    </div>
+                  )}
+
                   {inventory.length === 0 ? (
                     <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
-                      No raw ingredients exist yet. Add ingredients from Inventory & Recipes first, then return here to build this product recipe.
+                      No raw ingredients exist yet. Add ingredients from Inventory & Recipes first.
                     </div>
                   ) : (
                     <>
                       <div className="grid md:grid-cols-[1fr_170px_110px] gap-2 items-end">
                         <div>
                           <label className="block text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-1">
-                            Raw Ingredient
+                            Raw Ingredient for {activeRecipeSize}
                           </label>
                           <select
                             value={recipeIngredientId}
@@ -908,7 +1058,7 @@ export const MenuManagement: React.FC = () => {
                               <option
                                 key={ingredient.id}
                                 value={ingredient.id}
-                                disabled={recipe.some(
+                                disabled={currentRecipe.some(
                                   recipeItem => recipeItem.ingredientId === ingredient.id
                                 )}
                               >
@@ -920,7 +1070,7 @@ export const MenuManagement: React.FC = () => {
 
                         <div>
                           <label className="block text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-1">
-                            Qty Per Product
+                            Qty Per {activeRecipeSize}
                           </label>
                           <div className="flex">
                             <input
@@ -952,18 +1102,18 @@ export const MenuManagement: React.FC = () => {
                       <div className="rounded-lg border border-slate-800 overflow-hidden">
                         <div className="grid grid-cols-[1fr_150px_110px_110px_40px] gap-2 px-3 py-2 bg-slate-950 text-[9px] uppercase tracking-wider font-bold text-slate-500">
                           <span>Ingredient</span>
-                          <span>Qty / Product</span>
+                          <span>Qty / {activeRecipeSize}</span>
                           <span>Available</span>
                           <span>Est. Cost</span>
                           <span />
                         </div>
 
-                        {recipe.length === 0 ? (
+                        {currentRecipe.length === 0 ? (
                           <div className="p-6 text-center text-slate-500 text-xs">
-                            No raw ingredients added to this recipe yet.
+                            No ingredients configured for the {activeRecipeSize} recipe yet.
                           </div>
                         ) : (
-                          recipe.map(recipeItem => {
+                          currentRecipe.map(recipeItem => {
                             const inventoryItem = inventory.find(
                               item => item.id === recipeItem.ingredientId
                             );
@@ -1032,7 +1182,7 @@ export const MenuManagement: React.FC = () => {
                                     removeRecipeIngredient(recipeItem.ingredientId)
                                   }
                                   className="h-8 w-8 flex items-center justify-center rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20"
-                                  title="Remove ingredient from recipe"
+                                  title="Remove ingredient from this size recipe"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -1044,12 +1194,12 @@ export const MenuManagement: React.FC = () => {
 
                       {recipeStockWarnings.length > 0 && (
                         <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-[10px] text-amber-200">
-                          {recipeStockWarnings.length} recipe ingredient{recipeStockWarnings.length === 1 ? '' : 's'} currently have insufficient or missing inventory. The recipe can still be saved, but stock should be corrected before sale.
+                          {recipeStockWarnings.length} ingredient{recipeStockWarnings.length === 1 ? '' : 's'} in the {activeRecipeSize} recipe currently have insufficient or missing stock.
                         </div>
                       )}
 
                       <div className="rounded-lg bg-slate-950 border border-slate-800 p-3 text-[10px] text-slate-400 leading-relaxed">
-                        <strong className="text-slate-300">Example:</strong> If one Zinger Burger uses 1 Bun, 0.15 KG Chicken and 0.03 Litre Sauce, enter those exact quantities here. Selling 3 Zinger Burgers will consume 3 Buns, 0.45 KG Chicken and 0.09 Litre Sauce automatically.
+                        <strong className="text-slate-300">Important:</strong> Selling price and recipe cost remain separate. The selected size controls both its selling price and which raw ingredient recipe will be deducted from inventory.
                       </div>
                     </>
                   )}
