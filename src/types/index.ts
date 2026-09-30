@@ -80,6 +80,13 @@ export interface RecipeIngredient {
   unit: string;
 }
 
+// A separate recipe can be stored for each product size / variant.
+// Example: Small, Medium and Large pizzas can consume different ingredient quantities.
+export interface MenuItemRecipe {
+  sizeName: string;
+  ingredients: RecipeIngredient[];
+}
+
 export interface MenuItem {
   id: string;
   name: string;
@@ -91,7 +98,14 @@ export interface MenuItem {
   available: boolean;
   station: KitchenStation;
   image?: string;
+
+  // Legacy/default recipe is kept optional for backward compatibility with
+  // existing saved menu data. New size-based recipes should use recipes.
   recipe?: RecipeIngredient[];
+
+  // Size / variant specific recipes.
+  // The sizeName should match MenuItemSize.name.
+  recipes?: MenuItemRecipe[];
 }
 
 export interface MenuCategory {
